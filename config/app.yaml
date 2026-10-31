@@ -1,0 +1,22 @@
+seed: 25
+epoch: '2026-01-01T00:00:00Z'
+currency: null
+time_bucket_seconds: 60
+policy: status_check_first
+base_delay: 0.1
+max_delay: 2.0
+max_attempts: 5
+lease_seconds: 30.0
+unavailable_attempts: 2
+delayed_seconds: 0.2
+input_rate: 0
+kafka_topic: recap.requests.v1
+dead_letter_topic: recap.dead-letter.v1
+consumer_group: recap-workers-v1
+failure_mix:
+  clean: 0.88
+  timeout_after_completion: 0.04
+  dropped_response: 0.03
+  delayed_response: 0.03
+  duplicate_submission: 0.01
+  provider_unavailable: 0.01

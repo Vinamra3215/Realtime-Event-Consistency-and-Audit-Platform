@@ -1,0 +1,16 @@
+default:
+  clean: 0.88
+  timeout_after_completion: 0.04
+  dropped_response: 0.03
+  delayed_response: 0.03
+  duplicate_submission: 0.01
+  provider_unavailable: 0.01
+all_scenarios:
+  clean: 0.125
+  timeout_after_completion: 0.125
+  dropped_response: 0.125
+  delayed_response: 0.125
+  duplicate_submission: 0.125
+  provider_unavailable: 0.125
+  permanent_failure: 0.125
+  always_unknown: 0.125
