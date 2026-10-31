@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recap.example/schemas/transaction-event/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "event_id", "event_type", "run_id", "transaction_id", "idempotency_key", "payload_hash", "attribute_hash", "source", "transaction_type", "originator", "destination", "amount_minor", "currency", "balances", "timestamp", "attempt_number", "scenario"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_type": {"enum": ["request", "duplicate_submission"]},
+    "run_id": {"type": "string", "format": "uuid"},
+    "transaction_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "attribute_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["dataset_sha256", "row", "step"],
+      "properties": {
+        "dataset_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "row": {"type": "integer", "minimum": 1},
+        "step": {"type": "integer", "minimum": 0, "maximum": 1000000}
+      }
+    },
+    "transaction_type": {"enum": ["CASH_IN", "CASH_OUT", "DEBIT", "PAYMENT", "TRANSFER"]},
+    "originator": {"type": "string", "minLength": 1, "maxLength": 128},
+    "destination": {"type": "string", "minLength": 1, "maxLength": 128},
+    "amount_minor": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "currency": {"type": ["string", "null"], "pattern": "^[A-Z]{3}$"},
+    "balances": {
+      "type": "object", "additionalProperties": false,
+      "required": ["origin_before", "origin_after", "destination_before", "destination_after"],
+      "properties": {
+        "origin_before": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "origin_after": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "destination_before": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "destination_after": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}
+      }
+    },
+    "timestamp": {"type": "string", "format": "date-time", "pattern": "Z$"},
+    "attempt_number": {"const": 1},
+    "scenario": {"enum": ["clean", "timeout_after_completion", "dropped_response", "delayed_response", "duplicate_submission", "provider_unavailable", "permanent_failure", "always_unknown"]}
+  }
+}

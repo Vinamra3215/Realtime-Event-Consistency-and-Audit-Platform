@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["rejection_id", "raw_base64", "reason", "metadata", "received_at"],
+  "properties": {
+    "rejection_id": {"type": "string", "minLength": 1},
+    "raw_base64": {"type": "string", "contentEncoding": "base64"},
+    "reason": {"type": "string", "minLength": 1},
+    "metadata": {"type": "object"},
+    "received_at": {"type": "string", "format": "date-time"}
+  }
+}
