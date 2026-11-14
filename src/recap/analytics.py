@@ -160,6 +160,26 @@ def write_report(db, run_id, output_dir):
                 .order_by(reconciliations.c.transaction_id)
             ).mappings():
                 handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
+        query = (
+            select(transactions, references.c.event)
+            .join(
+                references,
+                (references.c.run_id == transactions.c.run_id)
+                & (references.c.transaction_id == transactions.c.transaction_id),
+            )
+            .where(transactions.c.run_id == run_id)
+            .order_by(transactions.c.transaction_id)
+        )
+        with (output / "transactions.jsonl").open("w", encoding="utf-8") as handle:
+            for row in connection.execute(query).mappings():
+                handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
+        with (output / "audit.jsonl").open("w", encoding="utf-8") as handle:
+            for row in connection.execute(
+                select(history)
+                .where(history.c.run_id == run_id)
+                .order_by(history.c.timestamp, history.c.event_id)
+            ).mappings():
+                handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
     lines = [
         "# RECAP run report",
         "",
@@ -179,7 +199,14 @@ def write_report(db, run_id, output_dir):
         "A null metric has no defined denominator or no measured completion interval.",
     ]
     (output / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    artifact_names = ("metrics.json", "metrics.csv", "reconciliation.jsonl", "report.md")
+    artifact_names = (
+        "metrics.json",
+        "metrics.csv",
+        "reconciliation.jsonl",
+        "report.md",
+        "transactions.jsonl",
+        "audit.jsonl",
+    )
     provenance = {
         "prepared_manifest": run_manifest,
         "reported_at": utc_now(),
