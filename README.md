@@ -53,17 +53,6 @@ If activation is disabled, replace `python` below with `.\.venv\Scripts\python.e
 Linux/macOS: activate with `source .venv/bin/activate`. Dependencies are pinned in
 `pyproject.toml`; each run records installed versions.
 
-## Portable demonstration
-
-```powershell
-python -m recap.cli --database-url sqlite:///outputs/demo.db simulate --csv tests/fixtures/paysim_sample.csv --output outputs/demo --limit 100
-```
-
-No services are required. The hand-authored fixture has 14 rows: 11 accepted, 3 rejected,
-and one retained balance anomaly. It is not an extract of the real Kaggle dataset.
-The default seed resolves all 11 logical transactions. Inspect `outputs/demo/metrics.json`,
-`report.md`, and `provenance.json`. Each new experiment needs a new output directory.
-
 ## Start real Kafka and PostgreSQL
 
 Docker Desktop must be running with Linux containers and Compose v2.
@@ -82,139 +71,95 @@ PostgreSQL uses **localhost:55432**, Kafka **localhost:9092**. Containers use
 `postgres:5432` and `kafka:19092`. To change the PostgreSQL host port set both
 `RECAP_POSTGRES_PORT` for Compose and `POSTGRES_PORT` for host Python.
 
-## Complete Kafka run
+## Final demonstration: 1,000 original PaySim rows + 17 separate cases
+
+Download the published [PaySim dataset](https://www.kaggle.com/datasets/ealaxi/paysim1), extract `PS_20174392719_1491204439457_log.csv`, and place it in `data/paysim-source/`. PaySim itself is a synthetic dataset; “original” here means unchanged published dataset values. Retain the full source locally. Create an unchanged
+source slice and a separate derived input-case file (the source CSV is never edited):
 
 ```powershell
-python -m recap.cli simulate --csv tests/fixtures/paysim_sample.csv --output outputs/kafka-demo --transport kafka --policy status_check_first --limit 100
+python -m recap.cli prepare-paysim --csv data/paysim-source/PS_20174392719_1491204439457_log.csv --output data/paysim-1000-separated --rows 1000
+python -m recap.cli --config config/edge_cases.yaml simulate --csv data/paysim-1000-separated/paysim-original.csv --output outputs/paysim-original-1000 --limit 1000 --transport kafka --timeout 600
+python -m recap.cli --config config/input_edges.yaml simulate --csv data/paysim-1000-separated/paysim-input-edges.csv --output outputs/paysim-input-edges --limit 17 --transport kafka --timeout 600
+python -m recap.cli dashboard --output outputs/paysim-original-1000 --compare-output outputs/paysim-input-edges
 ```
 
-This prepares, registers, publishes, consumes, drains recovery, verifies counts,
-reconciles, and reports. The bounded harness runs those phases sequentially; its latency
-and throughput are not estimates of a fully concurrent deployment.
+Use new output directory names for subsequent experiments. The first run retains all
+original source values and injects processing scenarios. The second isolates 17 input
+cases with a clean provider: 10 rejects and 7 accepted boundary/quality cases. Derived
+cases preserve a source row's identity fields but normalize monetary fields to isolate
+the checks; every changed field, parent source row, and checksum is documented in the
+CSV's `.cases.json` companion. They are explicitly marked as modified test rows.
 
-To run inside the application container:
+Preparation verifies the companion CSV checksum and embeds its labels in the run
+manifest. Labels describe expectations only and never override validation or provider
+behavior. The dashboard's run selector switches between reports. The **Input edge
+cases & handling** tab compares expected validation with actual rejection reasons,
+normalized amounts, quality findings, and processing actions. Transaction details
+include audit evidence and explanations of injected scenarios. Historical reports
+without catalogs still work. Original files, derived data, and reports remain outside Git.
 
-```powershell
-docker compose build app
-docker compose run --rm app simulate --csv tests/fixtures/paysim_sample.csv --output outputs/container-demo --transport kafka --limit 100
-```
+## Results and case handling
 
-Host `outputs` is writable, `data` is mounted read-only. The local course-project image
-includes test tools. No machine-specific paths are required.
+The verified local Kafka/PostgreSQL run on 14 November 2026 produced:
 
-## Local results dashboard
+| Measure | Original PaySim run | Separate input-case run |
+| --- | ---: | ---: |
+| Input rows | 1,000 | 17 |
+| Accepted / rejected | 1,000 / 0 | 7 / 10 |
+| SUCCESS / FAILED / UNRESOLVED | 740 / 137 / 123 | 7 / 0 / 0 |
+| Expected / processed wire events | 1,149 / 1,149 | 7 / 7 |
+| Duplicate submissions detected | 149 | 0 |
+| Duplicate provider effects | 0 | 0 |
+| Recovered / ever uncertain | 477 / 600 (79.5%) | 0 / 0 |
+| Source balance inconsistencies | 683 | 1 |
+| Audit records | 7,784 | 28 |
 
-Add `--ui` to a simulation to start a local web server and open the results in your
-browser when processing finishes:
+These are recorded results, not guaranteed counts for every environment or timing.
+All 1,000 published rows were retained. Processing failures are injected, not historical
+PaySim failures. The 683 balance flags are source-quality findings, not fraud decisions
+or payment failures. No controlled unprotected baseline has been measured, so these
+results do not establish a percentage improvement over another system.
 
-```powershell
-$runOutput = "outputs/demo-" + (Get-Date -Format "yyyyMMdd-HHmmss")
-python -m recap.cli simulate --csv tests/fixtures/paysim_sample.csv --output $runOutput --transport kafka --policy status_check_first --limit 100 --ui
-```
-
-The dashboard normally opens at `http://127.0.0.1:8765`. If that port is occupied,
-an available port is chosen and printed. Keep the terminal open; Ctrl+C stops only
-the dashboard. Use `--port 9000` to request another port or `--no-browser` to open
-the printed URL yourself. SQLite/direct simulations support `--ui` too.
-
-Reopen a saved run without starting Kafka or PostgreSQL:
-
-```powershell
-python -m recap.cli dashboard --output outputs/demo-20261114-145102
-```
-
-The read-only dashboard shows source identity and configuration, success/recovery
-metrics, source-quality findings, searchable input/outcome/rejection tables,
-reconciliation, latency percentiles, and downloadable report artifacts. New reports
-include `transactions.jsonl` and `audit.jsonl` for transaction details and audit history.
-Older reports remain viewable; unavailable details are explicitly marked rather than
-inferred. Each server displays one saved run. It binds only to loopback and needs no
-additional Python packages, frontend build, internet connection, or external assets.
-Large report searches scan saved records; this is a local report viewer, not a live
-processing monitor. Source files and existing reports are not modified when viewing.
-
-## Real PaySim data and separate processes
-
-Download the PaySim CSV from Kaggle dataset `ealaxi/paysim1` under its dataset terms.
-Create a `data` directory and place the CSV at `data/paysim.csv`. No credentials or full
-dataset are bundled or automatically downloaded. Fraud labels are outside this
-project's processing scope, and no currency is inferred. The test fixture includes
-malformed rows, a balance anomaly, merchant balance omissions, and CASH_IN semantics.
-
-```powershell
-python -m recap.cli prepare --csv data/paysim.csv --output outputs/prepared --start-row 1 --limit 1000 --seed 25 --policy jitter
-python -m recap.cli publish --prepared outputs/prepared
-python -m recap.cli consume --idle-timeout 10
-$run = (Get-Content outputs/prepared/manifest.json | ConvertFrom-Json).run_id
-python -m recap.cli recover --run-id $run --timeout 300
-python -m recap.cli finish --run-id $run
-python -m recap.cli reconcile --run-id $run
-python -m recap.cli report --run-id $run --output outputs/manual-report
-```
-
-Preparation hashes then streams a bounded slice. Row numbering is one-based, excluding
-the header. `publish` can be repeated after an interruption: duplicate deliveries are
-suppressed by the inbox. `finish` refuses incomplete counts or active jobs. Exhaustion
-retains UNRESOLVED state for investigation rather than inventing a confirmed failure.
-
-For background consumer and recovery processes, create topics first, then:
-
-```powershell
-docker compose --profile workers up -d --build consumer recovery
-```
-
-Alternatively run `python -m recap.cli consume --forever` and
-`python -m recap.cli recover --forever` in two terminals. Ctrl+C/SIGTERM requests shutdown;
-interrupted leases remain reclaimable.
-
-## Larger demos and edge cases
-
-`--limit` caps source rows read; it does not generate transactions. The bundled sample
-has 14 rows, of which 3 are rejected, leaving 11 transactions. Generate a larger
-synthetic input without downloading a dataset:
-
-```powershell
-python -m recap.cli generate-fixture --output data/demo-1000.csv --rows 1000 --seed 25 --edge-cases
-$runOutput = "outputs/edges-" + (Get-Date -Format "yyyyMMdd-HHmmss-fff")
-python -m recap.cli --config config/edge_cases.yaml simulate --csv data/demo-1000.csv --output $runOutput --limit 1017 --transport kafka --timeout 600 --ui
-```
-
-This creates 1,000 normal rows plus 17 input edge cases: **1,017 input rows, 1,007
-accepted transactions, and 10 rejects**. The `.cases.json` companion maps source row
-numbers to cases and expected validation outcomes. It is documentation, not an input
-to validation. Generated files are ignored by Git, and existing filenames are never
-overwritten. Change `--rows` to scale the input and increase `--limit` to cover that
-count plus 17. Omit `--edge-cases` for exactly the requested number of valid rows.
-This is synthetic demonstration data, not real PaySim or a realistic load model.
-
-| Input edge case | Detection and handling |
+| Separate input cases | Actual handling |
 | --- | --- |
-| Negative, nonnumeric, NaN, infinite, overflowing amount | Money validation rejects the row before Kafka |
-| Missing sender/receiver, unsupported type, negative step/balance | Required-field, type, and numeric checks reject the row |
-| Zero amount | Accepted by the current schema |
-| Fractional cent (`2.345`) | Rounded half-up to 235 minor units |
-| Inconsistent balances | Accepted; reconciliation flags source quality separately |
-| Merchant balances omitted | Marked unavailable, not treated as payment failure |
-| CASH_IN | Reconciliation checks the reversed balance direction |
-| Two identical source rows | Distinct row identities; not assumed to be the same request |
+| Negative, nonnumeric, NaN, infinite, overflowing amount | Rejected before Kafka |
+| Missing sender/receiver, unsupported type, negative step/balance | Rejected before Kafka |
+| Zero amount | Accepted by the current contract |
+| Fractional cent 2.345 | Rounded half-up to 235 minor units |
+| Balance mismatch | Accepted; source-quality inconsistency flagged |
+| Merchant balances omitted | Accepted; destination balance marked unavailable |
+| CASH_IN direction | Accepted; reverse balance direction checked |
+| Two identical source rows | Accepted as distinct source-row identities |
 
-`config/edge_cases.yaml` gives all eight processing scenarios equal probability.
-Scenario assignment is deterministic for the same file, row, and seed, but is an
-injected simulation rather than a failure inferred from the CSV. Small slices may
-not include every scenario; parameterized tests force every scenario under all four
-retry policies to guarantee coverage.
+The original-row run uses all eight processing scenarios from `config/edge_cases.yaml`:
+clean, timeout after completion, dropped response, delayed response, duplicate
+submission, provider unavailable, permanent failure, and always unknown. Recovery
+checks status before retrying, uses stable idempotency keys, stops on confirmed failure,
+and preserves UNRESOLVED after exhausted attempts. The separate 17-case run uses
+`config/input_edges.yaml` with a clean provider to isolate input validation.
 
-Timeouts/lost responses and delayed replies trigger recovery; repeated delivery uses
-the same idempotency key to prevent a second effect; temporary unavailability retries;
-confirmed permanent failure becomes `FAILED`; an always-unknown outcome stays
-`UNRESOLVED` after the attempt limit. Therefore a completed edge-case run is expected
-to have a mix of SUCCESS, FAILED, and UNRESOLVED. Kafka event counts can exceed logical
-transaction counts because the duplicate-submission scenario publishes an extra event.
-Inspect Rejected inputs, Scenario, Outcome, Reconciliation, and Audit history in the UI.
+## Local dashboard and saved evidence
+
+The dashboard opens at `http://127.0.0.1:8765`; if occupied, it prints another available
+port. Keep its terminal open. Ctrl+C stops the viewer. The run selector switches
+between the 1,000-row report and the 17-case report. Select **Input edge cases & handling**
+to inspect expected and actual validation, then **View** for source edits and audit evidence.
+Transactions also show injected scenario explanations and actual processing actions.
+
+Reopen saved results without Kafka or PostgreSQL:
 
 ```powershell
-python -m pytest tests/unit/test_demo_data.py tests/unit/test_recovery.py -q
+python -m recap.cli dashboard --output outputs/paysim-original-1000 --compare-output outputs/paysim-input-edges
 ```
+
+Each output directory contains `metrics.json`, `metrics.csv`, `report.md`,
+`provenance.json`, `transactions.jsonl`, `reconciliation.jsonl`, `audit.jsonl`, and
+`prepared/` input events, rejection records, and manifest. The viewer is read-only,
+loopback-only, and provides artifact downloads. It is a saved-report viewer, not a
+live processing monitor. Runtime data and generated reports stay out of Git.
+
+The small hand-authored fixture and synthetic generator remain for automated tests;
+they are not the final project demonstration. `--limit` caps rows and never generates them.
 
 ## Configuration
 
@@ -242,28 +187,23 @@ python -m pytest tests/performance --performance -q
 python -m pytest --live -q
 python -m ruff check src tests
 python -m ruff format --check src tests
-python -m recap.cli benchmark --csv tests/fixtures/paysim_sample.csv --output outputs/comparison --transport kafka --limit 100
+python -m recap.cli benchmark --csv data/paysim-1000-separated/paysim-original.csv --output outputs/comparison --transport kafka --limit 1000
 ```
 
 Without `--live` or `RECAP_INTEGRATION=1`, service tests explicitly skip. Live tests create
 isolated PostgreSQL schemas and unique Kafka topics, cleaning only those test resources.
 The benchmark writes `comparison.csv`, `benchmark.json`, and four run directories. It
 captures actual EXPLAIN output and peak Python allocations, excluding native/service
-memory. Use `data/paysim.csv` and a documented slice for real workload evaluation.
+memory. Use the unchanged PaySim slice and document its limits for workload evaluation.
 
 ### Verification record
 
-The full local verification run before this repository import passed **102 tests**:
-91 unit tests, 5 PostgreSQL integration tests, 5 Kafka/PostgreSQL end-to-end tests,
-and 1 performance harness, with 89% statement coverage. Live scenarios covered all
-four recovery policies, duplicate delivery, lost/delayed responses, unresolved outcomes,
-dead-letter handling, worker crashes, concurrent acceptance, and bounded Kafka replay.
-
-A separate consumer/recovery-worker demonstration completed 11 logical transactions,
-including 3 recovered transactions, with no duplicate provider effects. These results
-use small hand-authored fixtures; they do not establish full PaySim performance.
-Generated verification artifacts remain in the local working copy and are not committed.
-CI must run on GitHub to establish a remote CI result.
+The updated unit and performance suite passed **106 tests** locally. The final two
+Kafka/PostgreSQL simulations completed with all expected wire events accounted for.
+All 1,000 selected original rows were compared field-for-field with the published CSV;
+all 17 case validation outcomes matched expectations. Browser verification confirmed
+run switching and case details. Ruff lint/format and JavaScript syntax checks passed.
+These local checks do not establish production capacity or a remote GitHub CI result.
 
 ## Shutdown, reset, troubleshooting
 
