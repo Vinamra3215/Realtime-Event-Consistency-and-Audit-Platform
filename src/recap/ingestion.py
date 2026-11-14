@@ -107,6 +107,12 @@ def prepare(csv_path, output_dir, settings: Settings, limit=1000, start_row=1, r
     ):
         raise ValueError("Preparation output already exists; use a new directory")
     checksum = sha256_file(csv_path)
+    catalog_path = Path(csv_path).with_suffix(".cases.json")
+    catalog = None
+    if catalog_path.is_file():
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        if catalog.get("sha256") != checksum:
+            raise ValueError("Input case catalog checksum does not match the CSV")
     counts = Counter(read=0, accepted=0, rejected=0, published_events=0)
     scenarios = Counter()
     manifest = {
@@ -117,6 +123,9 @@ def prepare(csv_path, output_dir, settings: Settings, limit=1000, start_row=1, r
         "config": settings.public_dict(),
         "environment": environment(),
     }
+    if catalog is not None:
+        # Labels are provenance only. Raw values still determine acceptance.
+        manifest["input_catalog"] = catalog
     with (
         open(csv_path, newline="", encoding="utf-8-sig") as source,
         (output / "events.jsonl").open("w", encoding="utf-8") as events,

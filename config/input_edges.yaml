@@ -1,0 +1,5 @@
+# Input validation is tested independently of provider failure injection.
+seed: 25
+policy: status_check_first
+failure_mix:
+  clean: 1.0
