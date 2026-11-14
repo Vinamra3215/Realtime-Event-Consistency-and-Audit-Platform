@@ -102,6 +102,37 @@ docker compose run --rm app simulate --csv tests/fixtures/paysim_sample.csv --ou
 Host `outputs` is writable, `data` is mounted read-only. The local course-project image
 includes test tools. No machine-specific paths are required.
 
+## Local results dashboard
+
+Add `--ui` to a simulation to start a local web server and open the results in your
+browser when processing finishes:
+
+```powershell
+$runOutput = "outputs/demo-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+python -m recap.cli simulate --csv tests/fixtures/paysim_sample.csv --output $runOutput --transport kafka --policy status_check_first --limit 100 --ui
+```
+
+The dashboard normally opens at `http://127.0.0.1:8765`. If that port is occupied,
+an available port is chosen and printed. Keep the terminal open; Ctrl+C stops only
+the dashboard. Use `--port 9000` to request another port or `--no-browser` to open
+the printed URL yourself. SQLite/direct simulations support `--ui` too.
+
+Reopen a saved run without starting Kafka or PostgreSQL:
+
+```powershell
+python -m recap.cli dashboard --output outputs/demo-20261114-145102
+```
+
+The read-only dashboard shows source identity and configuration, success/recovery
+metrics, source-quality findings, searchable input/outcome/rejection tables,
+reconciliation, latency percentiles, and downloadable report artifacts. New reports
+include `transactions.jsonl` and `audit.jsonl` for transaction details and audit history.
+Older reports remain viewable; unavailable details are explicitly marked rather than
+inferred. Each server displays one saved run. It binds only to loopback and needs no
+additional Python packages, frontend build, internet connection, or external assets.
+Large report searches scan saved records; this is a local report viewer, not a live
+processing monitor. Source files and existing reports are not modified when viewing.
+
 ## Real PaySim data and separate processes
 
 Download the PaySim CSV from Kaggle dataset `ealaxi/paysim1` under its dataset terms.
@@ -135,6 +166,55 @@ docker compose --profile workers up -d --build consumer recovery
 Alternatively run `python -m recap.cli consume --forever` and
 `python -m recap.cli recover --forever` in two terminals. Ctrl+C/SIGTERM requests shutdown;
 interrupted leases remain reclaimable.
+
+## Larger demos and edge cases
+
+`--limit` caps source rows read; it does not generate transactions. The bundled sample
+has 14 rows, of which 3 are rejected, leaving 11 transactions. Generate a larger
+synthetic input without downloading a dataset:
+
+```powershell
+python -m recap.cli generate-fixture --output data/demo-1000.csv --rows 1000 --seed 25 --edge-cases
+$runOutput = "outputs/edges-" + (Get-Date -Format "yyyyMMdd-HHmmss-fff")
+python -m recap.cli --config config/edge_cases.yaml simulate --csv data/demo-1000.csv --output $runOutput --limit 1017 --transport kafka --timeout 600 --ui
+```
+
+This creates 1,000 normal rows plus 17 input edge cases: **1,017 input rows, 1,007
+accepted transactions, and 10 rejects**. The `.cases.json` companion maps source row
+numbers to cases and expected validation outcomes. It is documentation, not an input
+to validation. Generated files are ignored by Git, and existing filenames are never
+overwritten. Change `--rows` to scale the input and increase `--limit` to cover that
+count plus 17. Omit `--edge-cases` for exactly the requested number of valid rows.
+This is synthetic demonstration data, not real PaySim or a realistic load model.
+
+| Input edge case | Detection and handling |
+| --- | --- |
+| Negative, nonnumeric, NaN, infinite, overflowing amount | Money validation rejects the row before Kafka |
+| Missing sender/receiver, unsupported type, negative step/balance | Required-field, type, and numeric checks reject the row |
+| Zero amount | Accepted by the current schema |
+| Fractional cent (`2.345`) | Rounded half-up to 235 minor units |
+| Inconsistent balances | Accepted; reconciliation flags source quality separately |
+| Merchant balances omitted | Marked unavailable, not treated as payment failure |
+| CASH_IN | Reconciliation checks the reversed balance direction |
+| Two identical source rows | Distinct row identities; not assumed to be the same request |
+
+`config/edge_cases.yaml` gives all eight processing scenarios equal probability.
+Scenario assignment is deterministic for the same file, row, and seed, but is an
+injected simulation rather than a failure inferred from the CSV. Small slices may
+not include every scenario; parameterized tests force every scenario under all four
+retry policies to guarantee coverage.
+
+Timeouts/lost responses and delayed replies trigger recovery; repeated delivery uses
+the same idempotency key to prevent a second effect; temporary unavailability retries;
+confirmed permanent failure becomes `FAILED`; an always-unknown outcome stays
+`UNRESOLVED` after the attempt limit. Therefore a completed edge-case run is expected
+to have a mix of SUCCESS, FAILED, and UNRESOLVED. Kafka event counts can exceed logical
+transaction counts because the duplicate-submission scenario publishes an extra event.
+Inspect Rejected inputs, Scenario, Outcome, Reconciliation, and Audit history in the UI.
+
+```powershell
+python -m pytest tests/unit/test_demo_data.py tests/unit/test_recovery.py -q
+```
 
 ## Configuration
 
