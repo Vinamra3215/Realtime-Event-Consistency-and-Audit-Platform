@@ -5,6 +5,7 @@ import logging
 import shutil
 import socket
 import webbrowser
+from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
@@ -22,6 +23,17 @@ ARTIFACTS = (
     "prepared/rejected_rows.jsonl",
     "prepared/manifest.json",
 )
+
+SCENARIO_HELP = {
+    "clean": "Provider replies normally; no failure is injected.",
+    "timeout_after_completion": "Provider commits a payment but the first reply times out. Recovery observes status or retries using the same key.",
+    "dropped_response": "The first provider reply is lost after its effect is stored. Recovery resolves uncertainty using the configured policy.",
+    "delayed_response": "Initial replies may be unavailable until the configured delay. Status checks can confirm the stored outcome.",
+    "duplicate_submission": "An additional event uses the same transaction key. The service records the duplicate without another payment effect.",
+    "provider_unavailable": "Initial submissions return retryable unavailability. Recovery schedules attempts and checks status when configured.",
+    "permanent_failure": "Provider confirms failure. The transaction becomes FAILED and retries stop.",
+    "always_unknown": "Provider never gives a definite answer. Once attempts are exhausted, the transaction remains UNRESOLVED.",
+}
 
 
 class LocalReportServer(ThreadingHTTPServer):
@@ -76,8 +88,37 @@ class RunReport:
         }
 
     def rows(self, kind):
-        if kind == "transactions":
+        labels = {c["row"]: c for c in self.manifest.get("input_catalog", {}).get("cases", [])}
+        if kind == "cases":
+            accepted = {r["row"]: r for r in self.rows("transactions")}
+            rejected = {r["row"]: r for r in self.records("prepared/rejected_rows.jsonl")}
+            for row_number, case in labels.items():
+                tx, rejection = accepted.get(row_number), rejected.get(row_number)
+                actual = "rejected" if rejection else "accepted" if tx else "not observed"
+                if rejection:
+                    handling = "Rejected before Kafka: " + rejection["reason"]
+                elif tx:
+                    findings = ", ".join(tx["quality"]) or "no source-quality flags"
+                    handling = (
+                        f"Accepted; normalized amount {tx['input']['amount_minor']} minor units; "
+                        f"{findings}. {tx['handling']}"
+                    )
+                else:
+                    handling = "No evidence in this run's selected input slice."
+                yield {
+                    **case,
+                    "actual_validation": actual,
+                    "status": tx["status"] if tx else actual,
+                    "handling": handling,
+                    "expectation_met": actual == case["expected_validation"],
+                    "transaction": tx,
+                    "rejection": rejection,
+                }
+        elif kind == "transactions":
             checks = {r["transaction_id"]: r for r in self.records("reconciliation.jsonl")}
+            history = defaultdict(list)
+            for item in self.records("audit.jsonl"):
+                history[item["transaction_id"]].append(item)
             detailed = self.artifact("transactions.jsonl").is_file()
             source = "transactions.jsonl" if detailed else "prepared/events.jsonl"
             seen = set()
@@ -88,7 +129,26 @@ class RunReport:
                     continue
                 seen.add(tx_id)
                 check = checks.get(tx_id, {})
+                audit_rows = history.get(tx_id, [])
+                actions = [
+                    f"Attempt {a['attempt_number']}: {a['event_type']} → "
+                    f"{a['details'].get('outcome', a['next_state'])} "
+                    f"({a['details'].get('reason', '')})"
+                    for a in audit_rows
+                    if a["event_type"]
+                    in ("submit", "retry", "status_check", "exhaustion", "duplicate_submission")
+                ]
+                label = labels.get(event["source"]["row"])
                 yield {
+                    "case": label["case"] if label else "Original / unlabelled input",
+                    "case_definition": label,
+                    "scenario_explanation": SCENARIO_HELP.get(
+                        event["scenario"], "Unknown scenario"
+                    ),
+                    "handling": "; ".join(actions)
+                    if actions
+                    else "Detailed actions not exported in this report.",
+                    "audit": audit_rows,
                     "transaction_id": tx_id,
                     "row": event["source"]["row"],
                     "type": event["transaction_type"],
@@ -117,7 +177,11 @@ class RunReport:
                 "audit": "audit.jsonl",
                 "reconciliation": "reconciliation.jsonl",
             }[kind]
-            yield from self.records(name)
+            for row in self.records(name):
+                if kind == "rejected":
+                    case = labels.get(row["row"])
+                    row = {**row, "case": case["case"] if case else "Unlabelled validation failure"}
+                yield row
         else:
             raise ValueError("Unknown table")
 
@@ -136,8 +200,10 @@ class RunReport:
         return {"items": items, "total": total, "page": page, "size": size}
 
 
-def create_server(output, port=8765):
-    report = RunReport(output)
+def create_server(output, port=8765, compare_output=None):
+    reports = {"main": RunReport(output)}
+    if compare_output:
+        reports["edges"] = RunReport(compare_output)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -180,6 +246,10 @@ def create_server(output, port=8765):
                 return params.get(name, [default])[0]
 
             try:
+                selection = value("run", "main")
+                if selection not in reports:
+                    raise ValueError("Unknown run selection")
+                report = reports[selection]
                 if url.path in ("/", "/style.css", "/app.js"):
                     name, mime = {
                         "/": ("index.html", "text/html"),
@@ -190,7 +260,20 @@ def create_server(output, port=8765):
                     self.send_headers(len(body), mime + "; charset=utf-8")
                     self.wfile.write(body)
                 elif url.path == "/api/summary":
-                    self.send_json(report.summary())
+                    self.send_json(
+                        {
+                            **report.summary(),
+                            "selected_run": selection,
+                            "available_runs": [
+                                {
+                                    "key": key,
+                                    "name": r.manifest["dataset"]["name"],
+                                    "rows": r.metrics["source_rows_read"],
+                                }
+                                for key, r in reports.items()
+                            ],
+                        }
+                    )
                 elif url.path == "/api/rows":
                     self.send_json(
                         report.page(
@@ -222,9 +305,9 @@ def create_server(output, port=8765):
     return server
 
 
-def serve_dashboard(output, port=8765, open_browser=True, stop=lambda: False):
+def serve_dashboard(output, port=8765, open_browser=True, stop=lambda: False, compare_output=None):
     try:
-        server = create_server(output, port)
+        server = create_server(output, port, compare_output)
     except OSError as exc:
         if exc.errno not in (48, 98, 10048) and getattr(exc, "winerror", None) not in (
             10013,
@@ -232,7 +315,7 @@ def serve_dashboard(output, port=8765, open_browser=True, stop=lambda: False):
         ):
             raise
         print(f"Port {port} is unavailable; choosing a separate dashboard port.", flush=True)
-        server = create_server(output, 0)
+        server = create_server(output, 0, compare_output)
     with server:
         server.timeout = 0.4
         url = f"http://127.0.0.1:{server.server_port}"

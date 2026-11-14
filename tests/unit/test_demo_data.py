@@ -72,6 +72,9 @@ def test_wrong_csv_field_count_is_rejected_without_losing_next_row(tmp_path, dif
     rows[1] = rows[1][:-1] if difference == -1 else rows[1] + ["extra"]
     with source.open("w", newline="") as handle:
         csv.writer(handle).writerows(rows)
+    # This test changes input structure, so remove the generator's now-stale
+    # provenance catalog. Catalog tampering is covered separately.
+    source.with_suffix(".cases.json").unlink()
     output = tmp_path / "prepared"
     manifest = prepare(source, output, Settings(failure_mix={"clean": 1}))
     assert manifest["counts"] == {"read": 2, "accepted": 1, "rejected": 1, "published_events": 1}

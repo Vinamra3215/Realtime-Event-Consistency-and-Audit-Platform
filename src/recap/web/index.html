@@ -21,6 +21,7 @@
   <main>
     <header><span>Realtime Event Consistency & Audit Platform</span><span class="pill">Local workspace</span></header>
     <div id="error" role="alert" hidden></div>
+    <div class="run-picker"><label for="run-picker">Viewing saved run</label><select id="run-picker" aria-label="Select saved run"></select><p id="source-kind" class="muted"></p></div>
     <section id="overview">
       <div class="eyebrow">TRANSACTION RUN / RESULTS</div>
       <div class="title-row"><div><h1>Every transaction.<br><span>A clear outcome.</span></h1><p id="subtitle">Loading your saved report…</p></div><div id="status" class="status">Loading</div></div>
@@ -41,7 +42,7 @@
     </section>
     <section id="records"><div class="section-heading"><div class="eyebrow">03 / INSPECT</div><h2>Follow the individual records.</h2><p>Search a sender, transaction ID, scenario, or rejection reason. Select a row for full details.</p></div>
       <article class="panel table-panel">
-        <div class="tabs" role="group" aria-label="Record type"><button class="selected" data-kind="transactions">Transactions</button><button data-kind="rejected">Rejected inputs</button><button data-kind="reconciliation">Reconciliation</button><button data-kind="audit">Audit history</button></div>
+        <div class="tabs" role="group" aria-label="Record type"><button class="selected" data-kind="transactions">Transactions</button><button data-kind="cases">Input edge cases & handling</button><button data-kind="rejected">Rejected inputs</button><button data-kind="reconciliation">Reconciliation</button><button data-kind="audit">Audit history</button></div>
         <div class="toolbar"><label>Search records<input id="search" type="search" placeholder="ID, sender, scenario, reason…"></label><label id="status-label">Outcome<select id="filter"><option value="">All outcomes</option><option>SUCCESS</option><option>UNRESOLVED</option><option>FAILED</option><option>PROCESSING</option><option>INITIATED</option></select></label></div>
         <p id="table-note" class="muted"></p>
         <div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div>
@@ -54,5 +55,5 @@
     <section id="artifacts"><div class="section-heading"><div class="eyebrow">05 / EVIDENCE</div><h2>Your results, ready to inspect.</h2><p id="output-path" class="mono path"></p></div><div id="downloads" class="downloads"></div><details class="panel"><summary>All metrics & recorded provenance</summary><pre id="raw"></pre></details></section>
     <footer>RECAP · Academic transaction recovery simulation <span id="reported"></span></footer>
   </main>
-  <dialog id="detail"><div class="dialog-heading"><h2>Record details</h2><button id="close-detail" aria-label="Close record details">Close ✕</button></div><p>Full saved record, including available input fields and processing evidence.</p><pre id="detail-json"></pre></dialog>
+  <dialog id="detail"><div class="dialog-heading"><h2>Record details</h2><button id="close-detail" aria-label="Close record details">Close ✕</button></div><p id="handling-summary"></p><p>Full saved record, including source edits, expected handling and actual evidence where available.</p><pre id="detail-json"></pre></dialog>
 </body></html>

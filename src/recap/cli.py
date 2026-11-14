@@ -36,6 +36,12 @@ def parser():
     commands.add_parser("migrate")
     commands.add_parser("topics")
     commands.add_parser("doctor", help="Check database and Kafka connectivity")
+    paysim = commands.add_parser(
+        "prepare-paysim", help="Separate original source rows and derived input edge cases"
+    )
+    paysim.add_argument("--csv", required=True)
+    paysim.add_argument("--output", required=True)
+    paysim.add_argument("--rows", type=int, default=1000)
     generate = commands.add_parser("generate-fixture", help="Generate synthetic PaySim-format CSV")
     generate.add_argument("--output", required=True, help="New .csv file path")
     generate.add_argument("--rows", type=int, default=1000, help="Normal rows, before edge cases")
@@ -45,6 +51,7 @@ def parser():
     dashboard.add_argument("--output", required=True, help="Directory containing metrics.json")
     dashboard.add_argument("--port", type=int, default=8765)
     dashboard.add_argument("--no-browser", action="store_true")
+    dashboard.add_argument("--compare-output", help="Second saved report, selectable in the UI")
     reset = commands.add_parser(
         "reset", help="Destructively remove all RECAP run data; Kafka is separate"
     )
@@ -88,6 +95,15 @@ def parser():
 def main(argv=None):
     configure_logging()
     args = parser().parse_args(argv)
+    if args.command == "prepare-paysim":
+        from recap.paysim_data import prepare_paysim
+
+        try:
+            print(json.dumps(prepare_paysim(args.csv, args.output, args.rows), indent=2))
+            return 0
+        except (OSError, ValueError) as exc:
+            logging.getLogger(__name__).error("Cannot prepare PaySim inputs: %s", exc)
+            return 1
     if args.command == "generate-fixture":
         from recap.demo_data import generate_fixture
 
@@ -102,7 +118,8 @@ def main(argv=None):
         from recap.dashboard import serve_dashboard
 
         try:
-            return serve_dashboard(args.output, args.port, not args.no_browser)
+            options = {"compare_output": args.compare_output} if args.compare_output else {}
+            return serve_dashboard(args.output, args.port, not args.no_browser, **options)
         except (OSError, ValueError, KeyError) as exc:
             logging.getLogger(__name__).error("Cannot open dashboard: %s", exc)
             return 1
