@@ -36,6 +36,15 @@ def parser():
     commands.add_parser("migrate")
     commands.add_parser("topics")
     commands.add_parser("doctor", help="Check database and Kafka connectivity")
+    generate = commands.add_parser("generate-fixture", help="Generate synthetic PaySim-format CSV")
+    generate.add_argument("--output", required=True, help="New .csv file path")
+    generate.add_argument("--rows", type=int, default=1000, help="Normal rows, before edge cases")
+    generate.add_argument("--seed", type=int, default=25)
+    generate.add_argument("--edge-cases", action="store_true", help="Append 17 labeled input cases")
+    dashboard = commands.add_parser("dashboard", help="Open a saved run in a local browser")
+    dashboard.add_argument("--output", required=True, help="Directory containing metrics.json")
+    dashboard.add_argument("--port", type=int, default=8765)
+    dashboard.add_argument("--no-browser", action="store_true")
     reset = commands.add_parser(
         "reset", help="Destructively remove all RECAP run data; Kafka is separate"
     )
@@ -52,6 +61,12 @@ def parser():
         if name != "prepare":
             child.add_argument("--transport", choices=["direct", "kafka"], default="direct")
             child.add_argument("--timeout", type=float, default=120)
+        if name == "simulate":
+            child.add_argument(
+                "--ui", action="store_true", help="Open results in a local dashboard"
+            )
+            child.add_argument("--port", type=int, default=8765)
+            child.add_argument("--no-browser", action="store_true")
     publish = commands.add_parser("publish")
     publish.add_argument("--prepared", required=True)
     consume = commands.add_parser("consume")
@@ -73,6 +88,24 @@ def parser():
 def main(argv=None):
     configure_logging()
     args = parser().parse_args(argv)
+    if args.command == "generate-fixture":
+        from recap.demo_data import generate_fixture
+
+        try:
+            result = generate_fixture(args.output, args.rows, args.seed, args.edge_cases)
+            print(json.dumps(result, indent=2))
+            return 0
+        except (OSError, ValueError) as exc:
+            logging.getLogger(__name__).error("Cannot generate fixture: %s", exc)
+            return 1
+    if args.command == "dashboard":
+        from recap.dashboard import serve_dashboard
+
+        try:
+            return serve_dashboard(args.output, args.port, not args.no_browser)
+        except (OSError, ValueError, KeyError) as exc:
+            logging.getLogger(__name__).error("Cannot open dashboard: %s", exc)
+            return 1
     load_environment()
     if args.command == "init-env":
         path = Path(".env")
@@ -177,6 +210,13 @@ def main(argv=None):
             result = write_report(db, args.run_id, args.output)
         if result is not None:
             print(json.dumps(result, indent=2, default=str))
+        if getattr(args, "ui", False):
+            from recap.dashboard import serve_dashboard
+
+            db.dispose()
+            return serve_dashboard(
+                args.output, args.port, not args.no_browser, stop=lambda: stop_requested
+            )
         return 0
     except (ValueError, TimeoutError, OSError) as exc:
         logging.getLogger(__name__).error(
