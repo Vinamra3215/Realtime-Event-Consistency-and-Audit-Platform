@@ -1,0 +1,20 @@
+# Balanced fault injection for demonstrations; not a real-world failure distribution.
+# Unspecified settings inherit Settings defaults. Assignment is seeded and probabilistic;
+# automated tests force each scenario separately to guarantee coverage.
+seed: 25
+policy: status_check_first
+base_delay: 0.1
+max_delay: 2.0
+max_attempts: 5
+lease_seconds: 30.0
+unavailable_attempts: 2
+delayed_seconds: 0.2
+failure_mix:
+  clean: 0.125
+  timeout_after_completion: 0.125
+  dropped_response: 0.125
+  delayed_response: 0.125
+  duplicate_submission: 0.125
+  provider_unavailable: 0.125
+  permanent_failure: 0.125
+  always_unknown: 0.125
