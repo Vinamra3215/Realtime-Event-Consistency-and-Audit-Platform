@@ -21,6 +21,9 @@ recap = "recap.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+recap = ["web/*.html", "web/*.css", "web/*.js"]
+
 [tool.setuptools.data-files]
 "share/recap/schemas" = ["schemas/*.json"]
 "share/recap/migrations" = ["migrations/*.sql"]

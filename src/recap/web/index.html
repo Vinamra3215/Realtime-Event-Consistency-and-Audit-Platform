@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RECAP · Run explorer</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview"><span class="mark">R</span> RECAP<span class="team">TEAM 25</span></a>
+    <div class="nav-label">RUN EXPLORER</div>
+    <nav aria-label="Report sections">
+      <a href="#overview" class="active">Overview <span>01</span></a>
+      <a href="#input">Input & configuration <span>02</span></a>
+      <a href="#records">Transaction explorer <span>03</span></a>
+      <a href="#performance">Performance <span>04</span></a>
+      <a href="#artifacts">Files & evidence <span>05</span></a>
+    </nav>
+    <div class="sidebar-note"><span class="live-dot"></span> LOCAL REPORT<br><p>Saved results from your transaction pipeline. No external services needed to view.</p></div>
+  </aside>
+  <main>
+    <header><span>Realtime Event Consistency & Audit Platform</span><span class="pill">Local workspace</span></header>
+    <div id="error" role="alert" hidden></div>
+    <section id="overview">
+      <div class="eyebrow">TRANSACTION RUN / RESULTS</div>
+      <div class="title-row"><div><h1>Every transaction.<br><span>A clear outcome.</span></h1><p id="subtitle">Loading your saved report…</p></div><div id="status" class="status">Loading</div></div>
+      <div class="run-meta"><span id="execution"></span><span id="policy"></span><span id="run-id" class="mono"></span></div>
+      <div id="cards" class="cards"></div>
+      <div class="two-col">
+        <article class="panel"><div class="panel-heading"><h2>From input to outcome</h2><span class="small">ROW & TRANSACTION COUNTS</span></div><div id="flow" class="flow"></div><p id="flow-note" class="muted"></p></article>
+        <article class="panel"><div class="panel-heading"><h2>Recovery & consistency</h2><span class="small">PROVIDER COMPARISON</span></div><div id="health"></div></article>
+      </div>
+      <div class="two-col">
+        <article class="panel"><h2>Observed scenarios</h2><div id="scenarios" class="bars"></div></article>
+        <article class="panel"><h2>Final transaction states</h2><div id="states" class="bars"></div><p class="muted">A completed run may still contain unresolved outcomes. Completion does not mean every payment succeeded.</p></article>
+      </div>
+    </section>
+    <section id="input"><div class="section-heading"><div class="eyebrow">02 / SOURCE</div><h2>Know what went in.</h2><p>Input identity, selected rows, and the settings captured for this run.</p></div>
+      <div class="two-col"><article class="panel"><h3>Input file</h3><dl id="source"></dl></article><article class="panel"><h3>Run configuration</h3><dl id="config"></dl></article></div>
+      <p class="muted">Amounts are displayed in major units (stored minor units ÷ 100). A currency is only shown when configured. Fraud labels are not used for prediction.</p>
+    </section>
+    <section id="records"><div class="section-heading"><div class="eyebrow">03 / INSPECT</div><h2>Follow the individual records.</h2><p>Search a sender, transaction ID, scenario, or rejection reason. Select a row for full details.</p></div>
+      <article class="panel table-panel">
+        <div class="tabs" role="group" aria-label="Record type"><button class="selected" data-kind="transactions">Transactions</button><button data-kind="rejected">Rejected inputs</button><button data-kind="reconciliation">Reconciliation</button><button data-kind="audit">Audit history</button></div>
+        <div class="toolbar"><label>Search records<input id="search" type="search" placeholder="ID, sender, scenario, reason…"></label><label id="status-label">Outcome<select id="filter"><option value="">All outcomes</option><option>SUCCESS</option><option>UNRESOLVED</option><option>FAILED</option><option>PROCESSING</option><option>INITIATED</option></select></label></div>
+        <p id="table-note" class="muted"></p>
+        <div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div>
+        <div class="pagination"><span id="count" aria-live="polite"></span><div><button id="prev">← Previous</button><button id="next">Next →</button></div></div>
+      </article>
+    </section>
+    <section id="performance"><div class="section-heading"><div class="eyebrow">04 / MEASURE</div><h2>Time, throughput, and recovery.</h2><p>Measured values from this run. A dash means no applicable observations.</p></div>
+      <article class="panel"><div id="timing-summary" class="timing-summary"></div><div class="table-scroll"><table><thead><tr><th>Measurement</th><th>Count</th><th>Mean</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody id="latencies"></tbody></table></div><p class="muted">Resolution starts at durable consumer acceptance. Pipeline latency starts at recorded submission. Throughput includes run coordination; small fixture results do not establish production capacity.</p></article>
+    </section>
+    <section id="artifacts"><div class="section-heading"><div class="eyebrow">05 / EVIDENCE</div><h2>Your results, ready to inspect.</h2><p id="output-path" class="mono path"></p></div><div id="downloads" class="downloads"></div><details class="panel"><summary>All metrics & recorded provenance</summary><pre id="raw"></pre></details></section>
+    <footer>RECAP · Academic transaction recovery simulation <span id="reported"></span></footer>
+  </main>
+  <dialog id="detail"><div class="dialog-heading"><h2>Record details</h2><button id="close-detail" aria-label="Close record details">Close ✕</button></div><p>Full saved record, including available input fields and processing evidence.</p><pre id="detail-json"></pre></dialog>
+</body></html>
