@@ -236,4 +236,7 @@ python -m ruff format --check src tests
 ## 👥 Contributors & Academic Context
 
 Developed as an academic prototype in **Data Engineering & Distributed DBMS** by **Team 25**.
-* Architected for reproducible fault-tolerance experiments and empirical consistency research.
+* Vinamra Gupta
+* Darsh Choudhary
+* Gurtej Singh
+* Devang Shukla
